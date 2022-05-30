@@ -1,0 +1,141 @@
+# project-7 -Set up HTTPS and Basic Authentication for Prometheus using Nginx and Certbot. 
+
+# I had already created a public server on AWS  (Amazon-ubuntu) and a domain name on Namecheap.
+i had also opened the following ports 
+1:80 (Certbot) 
+2:9090 (Prometheus)
+
+# ssh into your server
+Install wget.
+sudo apt update
+sudo apt -y install wget curl vim
+# Then download latest binary archive for Prometheus.
+mkdir -p /tmp/prometheus && cd /tmp/prometheus
+curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest | grep browser_download_url | grep linux-amd64 | cut -d '"' -f 4 | wget -qi -
+# Extract the file:
+tar xvf prometheus*.tar.gz
+cd prometheus*/
+# Move the binary files to /usr/local/bin/ directory.
+sudo mv prometheus promtool /usr/local/bin/
+# Check installed version:
+prometheus --version
+promtool --version
+# Move Prometheus configuration template to /etc directory.
+sudo mv prometheus.yml /etc/prometheus/prometheus.yml
+# Also move consoles and console_libraries to /etc/prometheus directory:
+sudo mv consoles/ console_libraries/ /etc/prometheus/
+cd $HOME
+# Create or edit a configuration file for Prometheus – /etc/prometheus/prometheus.yml.
+sudo vim /etc/prometheus/prometheus.yml
+The template configurations should look similar to below: (in this case copy from line 31-59)
+
+# my global config
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  # scrape_timeout is set to the global default (10s).
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      # - alertmanager:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+
+    static_configs:
+    - targets: ['localhost:9090']
+
+sudo systemctl daemon-reload
+sudo systemctl start prometheus
+sudo systemctl enable prometheus
+# Check status using systemctl status prometheus command:
+systemctl status prometheus
+# Confirm that you can connect to port 9090 by access the Prometheus server IP address / DNS name in your web browser
+sudo ufw allow 9090/tcp
+
+# Nginx Setup as a reverse proxy 
+
+ssh into your server
+wget http://nginx.org/keys/nginx_signing.key
+apt-key add nginx_signing.key
+nano /etc/apt/sources.list.d/nginx.list
+deb [arch=amd64] http://nginx.org/packages/mainline/ubuntu/ focal nginx (replace "focal" with your linux code name)
+
+apt update
+apt install nginx
+# check if nginx server is running
+systemctl status nginx
+systemctl start nginx (only if nginx isn't active)
+systemctl enable nginx
+# check localhost on url to see nginx welcome message
+localhost
+
+cd /etc/nginx/conf.d
+nano nginx.conf
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name (your name or server ip)
+    location / {
+        proxy_pass http://domain-name:9090/;
+    }
+}
+
+mv default.conf default.conf.disabled
+nginx -t
+nginx -s reload
+input your DNS on url to see it redirect to port 9090
+
+ # Let’s Encrypt Setup with certbot
+ # ssh into the server running your HTTP website as a user with sudo privileges.
+Install snapd
+sudo snap install core; sudo snap refresh core
+
+#  you should remove them before installing the Certbot snap to ensure that when you run the command certbot the snap is used rather than the installation from your OS package manager. 
+sudo apt-get remove certbot, sudo dnf remove certbot, or sudo yum remove certbot
+
+sudo snap install --classic certbot
+
+# Certbot edit your nginx configuration automatically to serve it, turning on HTTPS access.
+sudo certbot --nginx
+ 
+ # Test automatic renewal
+ sudo certbot renew --dry-run
+
+ # The command to renew certbot is installed in one of the following locations:
+ /etc/crontab/
+/etc/cron.*/*
+systemctl list-timers
+
+# To confirm that your site is set up properly, visit https://yourwebsite.com/ in your browser and look for the lock icon in the URL bar.
+
+SETTING UP BASIC AUTHENTICATION
+
+# Open the website and enter your desired password, click on encrypt and copy the resultant string.
+Generate a bcrypt https://bcrypt-generator.com/ .
+Open the web-config.yml file and add the following contents
+
+basic_auth_users:
+  {your_desired_username}:{your_encrypted_password}
+
+# Again test Prometheus with the following command
+
+/etc/prometheus/prometheus --config.file=/etc/prometheus/prometheus.yml --web.config.file=/etc/prometheus/web-config.yml
+
+# This time, when you browse your URL, Prometheus will prompt you for a username and password. Just enter the username placed in the web-config.yml file and password (unencrypted).
+
