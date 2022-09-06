@@ -90,7 +90,7 @@ server {
     listen 80;
     listen [::]:80;
 
-    server_name (123.45.678.89 or servername);
+    server_name 123.45.678.89 or servername;
     location / {
         proxy_pass http://domain-name:9090/;
     }
